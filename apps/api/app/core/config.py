@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
         return v
 
 
-def _fetch_from_secrets_manager() -> dict:
+def _fetch_from_secrets_manager() -> dict[str, Any]:
     secret_name = os.environ["AWS_SECRET_NAME"]
     region = os.environ["AWS_REGION"]
 
