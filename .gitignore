@@ -23,6 +23,7 @@ node_modules/
 out/
 build/
 .turbo/
+tsconfig.tsbuildinfo
 
 # ─── Docker ─────────────────────────────────────────────────────────────────
 *.log
