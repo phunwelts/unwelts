@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
@@ -41,7 +41,7 @@ def _fetch_from_secrets_manager() -> dict[str, Any]:
             f"Failed to fetch secret '{secret_name}' from Secrets Manager: {e}"
         ) from e
 
-    return json.loads(response["SecretString"])
+    return cast(dict[str, Any], json.loads(response["SecretString"]))
 
 
 def build_settings() -> Settings:
@@ -52,7 +52,7 @@ def build_settings() -> Settings:
         return Settings(app_env=app_env, **secrets)
 
     # Development: all variables are injected by Docker Compose into os.environ
-    return Settings(app_env=app_env)
+    return Settings(app_env=app_env)  # type: ignore[call-arg]
 
 
 settings = build_settings()
