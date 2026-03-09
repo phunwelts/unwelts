@@ -1,7 +1,7 @@
 import enum
 
 
-class MoodType(str, enum.Enum):
+class MoodType(enum.StrEnum):
     happy = "happy"
     sad = "sad"
     anxious = "anxious"
