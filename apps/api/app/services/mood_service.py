@@ -6,12 +6,15 @@ from datetime import UTC, datetime, timedelta
 
 import h3
 from geoalchemy2 import WKTElement
+from geoalchemy2.functions import ST_X, ST_Y
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models.enums import MoodType
 from app.db.models.mood import Mood
+from app.schemas.mood import RecentMoodItem
 
 
 def compute_fingerprint(ip: str, user_agent: str) -> str:
@@ -132,3 +135,36 @@ async def buffer_h3_aggregates(
             pipe.incr(key)
             pipe.expireat(key, expire_unix)
         await pipe.execute()
+
+
+async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMoodItem]:
+    """Return the most recent mood submissions ordered by submitted_at DESC.
+
+    Coordinates are extracted from the PostGIS geometry via ST_X/ST_Y so the
+    caller receives plain floats without any GeoAlchemy2 wrapper types.
+    City is not yet populated (reserved for future reverse-geocoding).
+    """
+    stmt = (
+        select(
+            Mood.id,
+            Mood.mood_type,
+            Mood.note,
+            ST_Y(Mood.location).label("lat"),
+            ST_X(Mood.location).label("lng"),
+            Mood.submitted_at,
+        )
+        .order_by(Mood.submitted_at.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return [
+        RecentMoodItem(
+            id=row.id,
+            mood_type=row.mood_type,
+            note=row.note,
+            lat=float(row.lat),
+            lng=float(row.lng),
+            submitted_at=row.submitted_at,
+        )
+        for row in result.all()
+    ]
