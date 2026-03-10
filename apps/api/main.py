@@ -1,8 +1,16 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.health import router as health_router
+from app.api.v1.map import router as map_router
 from app.api.v1.moods import router as moods_router
 from app.core.config import settings
+from app.core.errors import (
+    http_exception_handler,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
 from app.core.logging import configure_logging
 
 configure_logging()
@@ -22,9 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
 app.include_router(moods_router, prefix="/api/v1")
-
-
-@app.get("/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+app.include_router(health_router, prefix="/api/v1")
+app.include_router(map_router, prefix="/api/v1")
