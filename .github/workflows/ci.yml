@@ -58,8 +58,11 @@ jobs:
 
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql+asyncpg://unwelts:testpassword@localhost:5432/unwelts_test
           APP_ENV: development
+          DATABASE_URL: postgresql+asyncpg://unwelts:testpassword@localhost:5432/unwelts_test
+          REDIS_URL: redis://localhost:6379/0
+          FINGERPRINT_SECRET: test-secret-for-ci
+          MOOD_SUBMISSION_DAILY_LIMIT: "1"
         run: alembic upgrade head
 
       - name: Test (pytest)
