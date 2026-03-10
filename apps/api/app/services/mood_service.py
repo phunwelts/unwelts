@@ -90,6 +90,21 @@ async def insert_mood(
     return mood
 
 
+async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
+    """Return True if the submission is allowed, False if rate limited.
+
+    Uses SET NX EXAT for an atomic check-and-set: a single Redis round-trip
+    both checks existence and sets the key, eliminating any TOCTOU race.
+    The key expires at UTC midnight so the limit resets predictably at day
+    boundaries rather than rolling 24 h from first submission.
+    """
+    _, window_end = get_utc_day_window()
+    expire_unix = int(window_end.timestamp())
+    key = f"ratelimit:{fingerprint}"
+    result: bool | None = await redis.set(key, 1, nx=True, exat=expire_unix)
+    return result is not None
+
+
 async def buffer_h3_aggregates(
     redis: Redis,
     h3_r5: str,

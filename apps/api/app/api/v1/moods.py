@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from app.api.deps import DBSession, RedisClient
 from app.schemas.mood import MoodResponse, MoodSubmitRequest
@@ -18,6 +18,13 @@ async def submit_mood(
     ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "")
     fingerprint = mood_service.compute_fingerprint(ip, user_agent)
+
+    allowed = await mood_service.check_and_set_rate_limit(redis, fingerprint)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="You have already submitted a mood today. Try again tomorrow.",
+        )
 
     async with session.begin():
         mood = await mood_service.insert_mood(
