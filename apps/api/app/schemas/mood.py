@@ -19,3 +19,17 @@ class MoodResponse(BaseModel):
     submitted_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class RecentMoodItem(BaseModel):
+    id: uuid.UUID
+    mood_type: MoodType
+    note: str | None
+    lat: float
+    lng: float
+    city: str | None = None
+    submitted_at: datetime
+
+
+class RecentMoodsResponse(BaseModel):
+    moods: list[RecentMoodItem]

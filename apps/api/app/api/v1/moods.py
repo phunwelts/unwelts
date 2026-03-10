@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.api.deps import DBSession, RedisClient
-from app.schemas.mood import MoodResponse, MoodSubmitRequest
+from app.schemas.mood import MoodResponse, MoodSubmitRequest, RecentMoodsResponse
 from app.services import mood_service
 from app.services.mood_service import get_utc_day_window
 
@@ -53,3 +55,12 @@ async def submit_mood(
         mood_type=mood.mood_type,
         submitted_at=mood.submitted_at,
     )
+
+
+@router.get("/moods/recent", response_model=RecentMoodsResponse)
+async def get_recent_moods(
+    session: DBSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> RecentMoodsResponse:
+    moods = await mood_service.get_recent_moods(session, limit)
+    return RecentMoodsResponse(moods=moods)
