@@ -5,16 +5,23 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import h3
+import sqlalchemy as sa
 from geoalchemy2 import WKTElement
 from geoalchemy2.functions import ST_X, ST_Y
 from redis.asyncio import Redis
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models.enums import MoodType
+from app.db.models.h3_aggregate import H3Aggregate
 from app.db.models.mood import Mood
 from app.schemas.mood import RecentMoodItem
+
+# Module-level SystemRandom instance: uses os.urandom() for each call,
+# making coordinate fuzzing unpredictable even if the process state is leaked.
+_rng = random.SystemRandom()
 
 
 def compute_fingerprint(ip: str, user_agent: str) -> str:
@@ -36,10 +43,12 @@ def fuzz_coordinates(lat: float, lng: float) -> tuple[float, float]:
 
     Fuzzing happens here, before storage, so the database never holds
     the user's precise location. The stored point is already obfuscated.
+    SystemRandom.gauss() delegates random() to os.urandom(), so the noise
+    is OS-entropy-backed and cannot be predicted from process state alone.
     """
     std_dev = 0.005  # ~500 m at equator
-    fuzzed_lat = max(-90.0, min(90.0, lat + random.gauss(0, std_dev)))
-    fuzzed_lng = max(-180.0, min(180.0, lng + random.gauss(0, std_dev)))
+    fuzzed_lat = max(-90.0, min(90.0, lat + _rng.gauss(0, std_dev)))
+    fuzzed_lng = max(-180.0, min(180.0, lng + _rng.gauss(0, std_dev)))
     return fuzzed_lat, fuzzed_lng
 
 
@@ -93,6 +102,73 @@ async def insert_mood(
     return mood
 
 
+async def upsert_h3_aggregates(
+    session: AsyncSession,
+    h3_r5: str,
+    h3_r7: str,
+    mood_type: MoodType,
+    window_start: datetime,
+    window_end: datetime,
+) -> None:
+    """Upsert h3 aggregate counts for both H3 resolutions in the same transaction.
+
+    Runs inside the same session.begin() as insert_mood, so mood insertion and
+    aggregate update are atomic: no partial writes possible. ON CONFLICT DO UPDATE
+    is safe at MVP scale; for high-volume Phase 6, migrate to Redis write buffer.
+    """
+    for cell, resolution in ((h3_r5, 5), (h3_r7, 7)):
+        stmt = (
+            pg_insert(H3Aggregate)
+            .values(
+                id=uuid.uuid4(),
+                h3_cell=cell,
+                resolution=resolution,
+                mood_type=mood_type,
+                count=1,
+                window_start=window_start,
+                window_end=window_end,
+                updated_at=datetime.now(UTC),
+            )
+            .on_conflict_do_update(
+                constraint="uq_h3_aggregates",
+                set_={
+                    "count": H3Aggregate.__table__.c.count + 1,
+                    "updated_at": sa.func.now(),
+                },
+            )
+        )
+        await session.execute(stmt)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 reference: Redis write buffer for h3_aggregates
+#
+# Under high concurrency, ON CONFLICT DO UPDATE on the same h3_aggregates row
+# creates a write hotspot (classic DDIA hot-key problem). Redis atomic INCR
+# decouples the write path: a background worker periodically flushes counters
+# to Postgres in batches, eliminating row-level contention.
+#
+# Key format: h3agg:{YYYYMMDD}:{h3_cell}:{mood_type}:{resolution}
+# TTL: 48 h after window_start to cover late-arriving flushes.
+#
+# async def buffer_h3_aggregates(
+#     redis: Redis,
+#     h3_r5: str,
+#     h3_r7: str,
+#     mood_type: MoodType,
+#     window_start: datetime,
+# ) -> None:
+#     window_str = window_start.strftime("%Y%m%d")
+#     expire_unix = int((window_start + timedelta(days=2)).timestamp())
+#     async with redis.pipeline(transaction=True) as pipe:
+#         for cell, resolution in ((h3_r5, 5), (h3_r7, 7)):
+#             key = f"h3agg:{window_str}:{cell}:{mood_type.value}:{resolution}"
+#             pipe.incr(key)
+#             pipe.expireat(key, expire_unix)
+#         await pipe.execute()
+# ---------------------------------------------------------------------------
+
+
 async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
     """Return True if the submission is allowed, False if rate limited.
 
@@ -106,35 +182,6 @@ async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
     key = f"ratelimit:{fingerprint}"
     result: bool | None = await redis.set(key, 1, nx=True, exat=expire_unix)
     return result is not None
-
-
-async def buffer_h3_aggregates(
-    redis: Redis,
-    h3_r5: str,
-    h3_r7: str,
-    mood_type: MoodType,
-    window_start: datetime,
-) -> None:
-    """Buffer h3 aggregate increments in Redis instead of writing to Postgres directly.
-
-    Under high concurrency, ON CONFLICT DO UPDATE on the same h3_aggregates row
-    creates a write hotspot (classic DDIA hot-key problem). Redis atomic INCR
-    decouples the write path: a background worker periodically flushes counters
-    to Postgres in batches, eliminating row-level contention.
-
-    Key format: h3agg:{YYYYMMDD}:{h3_cell}:{mood_type}:{resolution}
-    TTL: 48 h after window_start to cover late-arriving flushes.
-    """
-    window_str = window_start.strftime("%Y%m%d")
-    # TTL: window_start + 48 h to survive at least one flush cycle after window close
-    expire_unix = int((window_start + timedelta(days=2)).timestamp())
-
-    async with redis.pipeline(transaction=True) as pipe:
-        for cell, resolution in ((h3_r5, 5), (h3_r7, 7)):
-            key = f"h3agg:{window_str}:{cell}:{mood_type.value}:{resolution}"
-            pipe.incr(key)
-            pipe.expireat(key, expire_unix)
-        await pipe.execute()
 
 
 async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMoodItem]:
