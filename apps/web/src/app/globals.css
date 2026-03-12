@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Playfair+Display:ital,wght@1,400;0,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg:           #030710;
+  --color-ocean:        #040C1B;
+  --color-surface:      rgba(255, 255, 255, 0.02);
+  --color-border:       rgba(255, 255, 255, 0.04);
+  --color-border-light: rgba(255, 255, 255, 0.035);
+  --color-text:         #cccccc;
+  --color-muted:        #888888;
+  --color-dim:          #555555;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: "Space Mono", "Courier New", monospace;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.12; }
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideR {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.anim-blink  { animation: blink  1.3s ease-in-out infinite; }
+.anim-fadein { animation: fadein 0.2s ease both; }
+.anim-slider { animation: slideR 0.35s ease both; }

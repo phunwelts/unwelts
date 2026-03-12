@@ -60,6 +60,7 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      target: dev
     container_name: unwelts_web
     restart: unless-stopped
     environment:
@@ -72,6 +73,7 @@ services:
       - /app/.next
     depends_on:
       - api
+    command: npm run dev
 
 volumes:
   pgdata:
