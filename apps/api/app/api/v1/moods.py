@@ -10,6 +10,14 @@ from app.services.mood_service import get_utc_day_window
 router = APIRouter()
 
 
+def _extract_ip(request: Request) -> str:
+    """Return the real client IP, preferring X-Forwarded-For when behind a proxy."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
 @router.post("/moods", response_model=MoodResponse, status_code=201)
 async def submit_mood(
     request: Request,
@@ -17,7 +25,7 @@ async def submit_mood(
     session: DBSession,
     redis: RedisClient,
 ) -> MoodResponse:
-    ip = request.client.host if request.client else "unknown"
+    ip = _extract_ip(request)
     user_agent = request.headers.get("user-agent", "")
     fingerprint = mood_service.compute_fingerprint(ip, user_agent)
 
@@ -28,6 +36,7 @@ async def submit_mood(
             detail="You have already submitted a mood today. Try again tomorrow.",
         )
 
+    window_start, window_end = get_utc_day_window()
     async with session.begin():
         mood = await mood_service.insert_mood(
             session=session,
@@ -37,18 +46,14 @@ async def submit_mood(
             note=body.note,
             fingerprint=fingerprint,
         )
-
-    # Redis buffer happens after the DB transaction commits.
-    # If Redis is temporarily unavailable, the mood is already durably persisted
-    # and the aggregate can be rebuilt from the moods table.
-    window_start, _ = get_utc_day_window()
-    await mood_service.buffer_h3_aggregates(
-        redis=redis,
-        h3_r5=mood.h3_r5,
-        h3_r7=mood.h3_r7,
-        mood_type=mood.mood_type,
-        window_start=window_start,
-    )
+        await mood_service.upsert_h3_aggregates(
+            session=session,
+            h3_r5=mood.h3_r5,
+            h3_r7=mood.h3_r7,
+            mood_type=mood.mood_type,
+            window_start=window_start,
+            window_end=window_end,
+        )
 
     return MoodResponse(
         id=mood.id,

@@ -25,6 +25,8 @@ export const MOOD_COLORS: Record<MoodType, string> = {
   anxious: "#f97316",
   sad: "#60a5fa",
   angry: "#f43f5e",
+  // excited exists in the backend enum but is intentionally absent from the
+  // submission UI — kept here so map rendering works if backend ever returns it.
   excited: "#fb7185",
   tired: "#a78bfa",
 };
@@ -74,7 +76,7 @@ export interface MapResponse {
   features: HexFeature[];
 }
 
-// ─── API: GET /moods/recent (endpoint to be created in 4.1) ──────────────────
+// ─── API: GET /moods/recent ───────────────────────────────────────────────────
 
 export interface RecentMood {
   id: string;
@@ -88,6 +90,16 @@ export interface RecentMood {
 
 export interface RecentMoodsResponse {
   moods: RecentMood[];
+}
+
+// ─── API errors ───────────────────────────────────────────────────────────────
+
+export interface ApiError {
+  detail: string;
+}
+
+export interface ValidationError {
+  detail: Array<{ loc: (string | number)[]; msg: string; type: string }>;
 }
 
 // ─── UI state ────────────────────────────────────────────────────────────────
@@ -104,7 +116,7 @@ export interface MapDot {
 /** An entry shown in the Live Feed sidebar */
 export interface FeedItem {
   id: string;
-  city: string;
+  city: string | null;
   mood_type: MoodType;
   note: string | null;
   submitted_at: string;
