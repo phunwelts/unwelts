@@ -7,6 +7,13 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+# ─── Development ─────────────────────────────────────────────────────────────
+# Used by docker-compose for local development (hot reload via next dev)
+FROM deps AS dev
+COPY . .
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
 # ─── Builder ────────────────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
