@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchRecentMoods } from "@/lib/api";
 import type { MapDot } from "@/types";
 
-export function useMoods(intervalMs = 30_000): MapDot[] {
+export function useMoods(intervalMs = 30_000): { dots: MapDot[]; refresh: () => void } {
   const [dots, setDots] = useState<MapDot[]>([]);
+  const refreshRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
+    let inflight = false;
+
     const load = async () => {
+      if (inflight) return;
+      inflight = true;
       try {
         const data = await fetchRecentMoods(100);
         setDots(
@@ -22,13 +27,17 @@ export function useMoods(intervalMs = 30_000): MapDot[] {
         );
       } catch {
         // Keep stale data on fetch failure
+      } finally {
+        inflight = false;
       }
     };
+
+    refreshRef.current = () => void load();
 
     void load();
     const id = setInterval(() => void load(), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
 
-  return dots;
+  return { dots, refresh: () => refreshRef.current() };
 }
