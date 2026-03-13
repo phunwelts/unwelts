@@ -8,14 +8,21 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import type { LayersList } from "@deck.gl/core";
 import { MOOD_COLORS } from "@/types";
-import type { MapDot } from "@/types";
+import type { MapDot, MoodType } from "@/types";
 
 const MAP_STYLE =
   "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
 
-const BASE_RADIUS_M = 8_000;
-const SONAR_MAX_M = 80_000;
-const SONAR_FRAMES = 120; // ~2 s at 60 fps
+// Below this zoom: only heatmap (organic regional glow).
+// Above: heatmap + individual dots + sonar.
+const DETAIL_ZOOM = 4;
+
+const DOT_GLOW_PX  = 5;
+const DOT_PX       = 3;
+const CENTER_PX    = 2;
+const SONAR_MIN_PX = 5;
+const SONAR_MAX_PX = 32;
+const SONAR_FRAMES = 120;
 
 function hexToRgb(hex: string): [number, number, number] {
   return [
@@ -25,74 +32,103 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
-/** Per-dot phase offset so each ring pulses independently */
+const RGB_CACHE = Object.fromEntries(
+  Object.entries(MOOD_COLORS).map(([m, hex]) => [m, hexToRgb(hex)])
+) as Record<MoodType, [number, number, number]>;
+
 function dotPhase(id: string): number {
-  return (id.charCodeAt(0) * 7 + id.charCodeAt(id.length - 1) * 13) %
-    SONAR_FRAMES;
+  return (id.charCodeAt(0) * 7 + id.charCodeAt(id.length - 1) * 13) % SONAR_FRAMES;
 }
 
-function buildLayers(dots: MapDot[], tick: number): LayersList {
-  // Regional heat glow — density-based, blue-white palette on dark navy
-  const heatmap = new HeatmapLayer<MapDot>({
-    id: "heatmap",
-    data: dots,
-    getPosition: (d) => [d.lng, d.lat],
-    getWeight: 1,
-    radiusPixels: 80,
-    intensity: 1.2,
-    threshold: 0.03,
-    colorRange: [
-      [0, 30, 80, 0],
-      [0, 50, 150, 60],
-      [50, 100, 200, 120],
-      [100, 150, 255, 180],
-      [200, 220, 255, 220],
-      [255, 255, 255, 255],
-    ],
+/**
+ * One HeatmapLayer per mood — smooth Gaussian kernel, scales naturally with zoom.
+ * Each mood colors its own density region; overlapping moods blend on the canvas.
+ */
+function buildHeatmapLayers(dots: MapDot[]): LayersList {
+  const moods = [...new Set(dots.map((d) => d.mood_type))];
+  return moods.map((mood) => {
+    const [r, g, b] = RGB_CACHE[mood];
+    return new HeatmapLayer<MapDot>({
+      id: `heatmap-${mood}`,
+      data: dots.filter((d) => d.mood_type === mood),
+      getPosition: (d) => [d.lng, d.lat],
+      getWeight: 1,
+      radiusPixels: 80,
+      intensity: 0.9,
+      threshold: 0.03,
+      colorRange: [
+        [r, g, b,  0],
+        [r, g, b, 15],
+        [r, g, b, 38],
+        [r, g, b, 68],
+        [r, g, b, 100],
+        [r, g, b, 125],
+      ],
+    });
   });
+}
 
-  // Solid mood-colored dot
-  const dots_layer = new ScatterplotLayer<MapDot>({
-    id: "dots",
-    data: dots,
-    getPosition: (d) => [d.lng, d.lat],
-    getFillColor: (d) => hexToRgb(MOOD_COLORS[d.mood_type]),
-    getRadius: BASE_RADIUS_M,
-    radiusUnits: "meters",
-    radiusMinPixels: 4,
-    radiusMaxPixels: 10,
-    filled: true,
-    stroked: false,
-    pickable: false,
-  });
+/** Small individual dots — shown only above DETAIL_ZOOM */
+function buildDetailLayers(dots: MapDot[]): LayersList {
+  return [
+    new ScatterplotLayer<MapDot>({
+      id: "dot-glow",
+      data: dots,
+      getPosition: (d) => [d.lng, d.lat],
+      getFillColor: (d) => [...RGB_CACHE[d.mood_type], 60],
+      getRadius: DOT_GLOW_PX,
+      radiusUnits: "pixels",
+      filled: true,
+      stroked: false,
+      pickable: false,
+    }),
+    new ScatterplotLayer<MapDot>({
+      id: "dots",
+      data: dots,
+      getPosition: (d) => [d.lng, d.lat],
+      getFillColor: (d) => RGB_CACHE[d.mood_type],
+      getRadius: DOT_PX,
+      radiusUnits: "pixels",
+      filled: true,
+      stroked: false,
+      pickable: false,
+    }),
+    new ScatterplotLayer<MapDot>({
+      id: "center",
+      data: dots,
+      getPosition: (d) => [d.lng, d.lat],
+      getFillColor: [255, 255, 255, 150],
+      getRadius: CENTER_PX,
+      radiusUnits: "pixels",
+      filled: true,
+      stroked: false,
+      pickable: false,
+    }),
+  ];
+}
 
-  // Sonar ring — expands outward and fades, each dot on its own phase
-  const sonar = new ScatterplotLayer<MapDot>({
+function buildSonarLayer(dots: MapDot[], tick: number): ScatterplotLayer<MapDot> {
+  return new ScatterplotLayer<MapDot>({
     id: "sonar",
     data: dots,
     getPosition: (d) => [d.lng, d.lat],
     getRadius: (d) => {
       const phase = (tick + dotPhase(d.id)) % SONAR_FRAMES;
-      return BASE_RADIUS_M + (phase / SONAR_FRAMES) * SONAR_MAX_M;
+      return SONAR_MIN_PX + (phase / SONAR_FRAMES) * (SONAR_MAX_PX - SONAR_MIN_PX);
     },
+    radiusUnits: "pixels",
     getLineColor: (d) => {
       const phase = (tick + dotPhase(d.id)) % SONAR_FRAMES;
-      const alpha = Math.floor(200 * (1 - phase / SONAR_FRAMES));
-      return [...hexToRgb(MOOD_COLORS[d.mood_type]), alpha];
+      const alpha = Math.floor(130 * (1 - phase / SONAR_FRAMES));
+      return [...RGB_CACHE[d.mood_type], alpha];
     },
-    getLineWidth: 2,
+    getLineWidth: 1,
     lineWidthUnits: "pixels",
-    radiusUnits: "meters",
     filled: false,
     stroked: true,
     pickable: false,
-    updateTriggers: {
-      getRadius: tick,
-      getLineColor: tick,
-    },
+    updateTriggers: { getRadius: tick, getLineColor: tick },
   });
-
-  return [heatmap, dots_layer, sonar];
 }
 
 interface WorldMapProps {
@@ -100,18 +136,22 @@ interface WorldMapProps {
 }
 
 export default function WorldMap({ dots }: WorldMapProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<MapboxOverlay | null>(null);
-  const dotsRef = useRef<MapDot[]>(dots);
-  const tickRef = useRef(0);
-  const frameRef = useRef(0);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const overlayRef    = useRef<MapboxOverlay | null>(null);
+  const dotsRef       = useRef<MapDot[]>(dots);
+  const heatmapsRef   = useRef<LayersList>([]);
+  const detailRef     = useRef<LayersList>([]);
+  const zoomRef       = useRef(1.5);
+  const tickRef       = useRef(0);
+  const frameRef      = useRef(0);
+  const mapLoadedRef  = useRef(false);
 
-  // Keep dotsRef current without restarting the animation loop
   useEffect(() => {
-    dotsRef.current = dots;
+    dotsRef.current   = dots;
+    heatmapsRef.current = buildHeatmapLayers(dots);
+    detailRef.current   = buildDetailLayers(dots);
   }, [dots]);
 
-  // Initialize MapLibre + deck.gl overlay once
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -125,24 +165,34 @@ export default function WorldMap({ dots }: WorldMapProps) {
       attributionControl: false,
     });
 
+    map.on("load", () => { mapLoadedRef.current = true; });
+    map.on("zoom", () => { zoomRef.current = map.getZoom(); });
+
     const overlay = new MapboxOverlay({ layers: [] });
     map.addControl(overlay);
     overlayRef.current = overlay;
 
     return () => {
       cancelAnimationFrame(frameRef.current);
+      mapLoadedRef.current = false;
       overlayRef.current = null;
       map.remove();
     };
   }, []);
 
-  // Animation loop — runs independently of React render cycle
   useEffect(() => {
     const animate = () => {
       tickRef.current = (tickRef.current + 1) % SONAR_FRAMES;
-      overlayRef.current?.setProps({
-        layers: buildLayers(dotsRef.current, tickRef.current),
-      });
+      if (overlayRef.current && mapLoadedRef.current) {
+        const detail = zoomRef.current >= DETAIL_ZOOM;
+        overlayRef.current.setProps({
+          layers: [
+            ...heatmapsRef.current,
+            ...(detail ? detailRef.current : []),
+            ...(detail ? [buildSonarLayer(dotsRef.current, tickRef.current)] : []),
+          ],
+        });
+      }
       frameRef.current = requestAnimationFrame(animate);
     };
     frameRef.current = requestAnimationFrame(animate);
