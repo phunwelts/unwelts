@@ -5,9 +5,10 @@ Run with: docker-compose run --rm api python seed_moods.py
 import asyncio
 import os
 import uuid
-from datetime import datetime, timezone, timedelta
-import h3
+from datetime import UTC, datetime, timedelta
+
 import asyncpg
+import h3
 
 # (lat, lng, mood_type, note)
 POINTS = [
@@ -48,11 +49,22 @@ POINTS = [
     ( 37.56, 126.97, "anxious", "exam season"),          # Seoul
 ]
 
+SQL = """
+    INSERT INTO moods
+        (id, fingerprint, mood_type, note, location, h3_r5, h3_r7, submitted_at)
+    VALUES
+        ($1, $2, $3::mood_type, $4,
+         ST_SetSRID(ST_MakePoint($6, $5), 4326), $7, $8, $9)
+"""
+
+
 async def main() -> None:
-    raw_url = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
+    raw_url = os.environ["DATABASE_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://"
+    )
     conn = await asyncpg.connect(raw_url)
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     inserted = 0
 
     for i, (lat, lng, mood_type, note) in enumerate(POINTS):
@@ -63,10 +75,7 @@ async def main() -> None:
         submitted = now - timedelta(seconds=i * 30)
 
         await conn.execute(
-            """
-            INSERT INTO moods (id, fingerprint, mood_type, note, location, h3_r5, h3_r7, submitted_at)
-            VALUES ($1, $2, $3::mood_type, $4, ST_SetSRID(ST_MakePoint($6, $5), 4326), $7, $8, $9)
-            """,
+            SQL,
             mood_id, fp, mood_type, note,
             lat, lng,
             h3_r5, h3_r7, submitted,
@@ -76,6 +85,7 @@ async def main() -> None:
 
     await conn.close()
     print(f"\n✓ {inserted} moods inserted.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
