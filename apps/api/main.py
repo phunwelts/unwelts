@@ -12,6 +12,7 @@ from app.core.errors import (
     validation_exception_handler,
 )
 from app.core.logging import configure_logging
+from app.core.middleware import RequestLoggingMiddleware
 
 configure_logging()
 
@@ -29,6 +30,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]

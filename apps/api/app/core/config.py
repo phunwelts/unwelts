@@ -18,6 +18,13 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+
+    # Rolling window for fingerprint-based rate limit.
+    # Default 24 h keeps existing prod semantics; reduce in dev/staging as needed.
+    rate_limit_window_hours: int = 24
+
     @field_validator("app_env")
     @classmethod
     def validate_app_env(cls, v: str) -> str:
