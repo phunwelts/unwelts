@@ -2,11 +2,14 @@ from datetime import datetime
 
 import h3
 import sqlalchemy as sa
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import MoodType
 from app.db.models.h3_aggregate import H3Aggregate
 from app.schemas.map import HexFeature, HexProperties, MapResponse, MoodCounts
+
+_MAP_TTL = 30  # seconds
 
 
 def _cell_to_geojson_polygon(cell: str) -> dict[str, object]:
@@ -23,15 +26,22 @@ def _cell_to_geojson_polygon(cell: str) -> dict[str, object]:
 
 async def get_map_data(
     session: AsyncSession,
+    redis: Redis,
     resolution: int,
     window_start: datetime,
 ) -> MapResponse:
     """Query h3_aggregates for the given resolution and day window.
 
-    Groups rows by h3_cell, sums counts per mood_type, and returns a
-    GeoJSON FeatureCollection where each feature is an H3 hexagon with
-    mood distribution and dominant mood in its properties.
+    Cache-aside with TTL 30 s: the heatmap query is expensive (full table scan
+    on h3_aggregates) and the data changes only on POST /moods. Invalidated on
+    every successful mood submission. Groups rows by h3_cell, sums counts per
+    mood_type, and returns a GeoJSON FeatureCollection.
     """
+    cache_key = f"map:{resolution}:{window_start.strftime('%Y-%m-%d')}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return MapResponse.model_validate_json(cached)
+
     result = await session.execute(
         sa.select(
             H3Aggregate.h3_cell,
@@ -71,4 +81,6 @@ async def get_map_data(
             )
         )
 
-    return MapResponse(features=features)
+    response = MapResponse(features=features)
+    await redis.set(cache_key, response.model_dump_json(), ex=_MAP_TTL)
+    return response
