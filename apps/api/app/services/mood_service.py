@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import random
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -22,6 +23,24 @@ from app.schemas.mood import RecentMoodItem
 # Module-level SystemRandom instance: uses os.urandom() for each call,
 # making coordinate fuzzing unpredictable even if the process state is leaked.
 _rng = random.SystemRandom()
+
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+_NULL_BYTE_RE = re.compile(r"\x00")
+_IP_RATE_LIMIT_MAX = 10  # requests per minute per IP
+
+
+def sanitize_note(note: str | None) -> str | None:
+    """Strip HTML tags and null bytes from user-supplied note text.
+
+    Runs before DB insert so the database never stores raw HTML. We do not
+    HTML-escape (that's the renderer's job); we strip tags entirely so the
+    stored value is plain text.
+    """
+    if note is None:
+        return None
+    cleaned = _HTML_TAG_RE.sub("", note)
+    cleaned = _NULL_BYTE_RE.sub("", cleaned)
+    return cleaned.strip() or None
 
 
 def compute_fingerprint(ip: str, user_agent: str) -> str:
@@ -79,6 +98,7 @@ async def insert_mood(
     submitted_at is set in Python (not server_default) so it is available
     immediately after flush without requiring a round-trip SELECT.
     """
+    note = sanitize_note(note)
     fuzzed_lat, fuzzed_lng = fuzz_coordinates(lat, lng)
 
     # h3 4.x API: latlng_to_cell(lat, lng, resolution)
@@ -182,6 +202,23 @@ async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
     key = f"ratelimit:{fingerprint}"
     result: bool | None = await redis.set(key, 1, nx=True, exat=expire_unix)
     return result is not None
+
+
+async def check_ip_rate_limit(redis: Redis, ip: str) -> bool:
+    """Return True if the IP is within the per-minute request limit, False otherwise.
+
+    Uses a fixed-window counter keyed by IP + UTC minute bucket. The key TTL is
+    set to 90 s (1.5x the window) to guarantee the counter outlives its bucket
+    regardless of sub-second timing. INCR is atomic, so no TOCTOU race exists.
+    """
+    minute_bucket = int(datetime.now(UTC).timestamp()) // 60
+    key = f"ip_ratelimit:{ip}:{minute_bucket}"
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.incr(key)
+        pipe.expire(key, 90)
+        results = await pipe.execute()
+    count: int = results[0]
+    return count <= _IP_RATE_LIMIT_MAX
 
 
 async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMoodItem]:
