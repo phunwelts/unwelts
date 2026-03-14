@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.api.deps import DBSession
+from app.api.deps import DBSession, RedisClient
 from app.schemas.map import MapResponse
 from app.services import map_service
 
@@ -13,6 +13,7 @@ router = APIRouter()
 @router.get("/map", response_model=MapResponse)
 async def get_map(
     session: DBSession,
+    redis: RedisClient,
     resolution: Annotated[
         int,
         Query(description="H3 resolution: 5 (city-level) or 7 (neighbourhood-level)"),
@@ -38,6 +39,7 @@ async def get_map(
 
     return await map_service.get_map_data(
         session=session,
+        redis=redis,
         resolution=resolution,
         window_start=window_start,
     )
