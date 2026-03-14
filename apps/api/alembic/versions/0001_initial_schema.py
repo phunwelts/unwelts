@@ -19,7 +19,7 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_MOOD_TYPE_VALUES = ("happy", "sad", "anxious", "angry", "excited", "calm", "tired")
+_MOOD_TYPE_VALUES = ("happy", "sad", "anxious", "angry", "calm", "tired")
 
 
 def upgrade() -> None:
@@ -27,7 +27,7 @@ def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
 
     # --- Enum (idempotent) ---
-    mood_values = "('happy','sad','anxious','angry','excited','calm','tired')"
+    mood_values = "('happy','sad','anxious','angry','calm','tired')"
     op.execute(f"""
         DO $$ BEGIN
             CREATE TYPE mood_type AS ENUM {mood_values};

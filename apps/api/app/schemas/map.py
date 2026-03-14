@@ -10,7 +10,6 @@ class MoodCounts(BaseModel):
     sad: int = 0
     anxious: int = 0
     angry: int = 0
-    excited: int = 0
     calm: int = 0
     tired: int = 0
 

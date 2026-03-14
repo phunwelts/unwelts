@@ -6,6 +6,5 @@ class MoodType(enum.StrEnum):
     sad = "sad"
     anxious = "anxious"
     angry = "angry"
-    excited = "excited"
     calm = "calm"
     tired = "tired"
