@@ -10,7 +10,7 @@ class MoodSubmitRequest(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0)
     lng: float = Field(..., ge=-180.0, le=180.0)
     mood_type: MoodType
-    note: str | None = Field(None, max_length=500)
+    note: str | None = Field(None, max_length=280)
 
 
 class MoodResponse(BaseModel):

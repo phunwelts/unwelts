@@ -61,7 +61,7 @@ jobs:
           APP_ENV: development
           DATABASE_URL: postgresql+asyncpg://unwelts:testpassword@localhost:5432/unwelts_test
           REDIS_URL: redis://localhost:6379/0
-          FINGERPRINT_SECRET: test-secret-for-ci
+          FINGERPRINT_SECRET: test-secret-for-ci-at-least-32-chars-ok
           MOOD_SUBMISSION_DAILY_LIMIT: "1"
         run: alembic upgrade head
 
@@ -71,7 +71,7 @@ jobs:
           DEBUG: "false"
           DATABASE_URL: postgresql+asyncpg://unwelts:testpassword@localhost:5432/unwelts_test
           REDIS_URL: redis://localhost:6379/0
-          FINGERPRINT_SECRET: test-secret-for-ci
+          FINGERPRINT_SECRET: test-secret-for-ci-at-least-32-chars-ok
           MOOD_SUBMISSION_DAILY_LIMIT: "1"
         run: pytest --cov=app --cov-report=term-missing
 
