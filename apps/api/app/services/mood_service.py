@@ -192,15 +192,14 @@ async def upsert_h3_aggregates(
 async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
     """Return True if the submission is allowed, False if rate limited.
 
-    Uses SET NX EXAT for an atomic check-and-set: a single Redis round-trip
+    Uses SET NX EX for an atomic check-and-set: a single Redis round-trip
     both checks existence and sets the key, eliminating any TOCTOU race.
-    The key expires at UTC midnight so the limit resets predictably at day
-    boundaries rather than rolling 24 h from first submission.
+    The TTL is a rolling window controlled by RATE_LIMIT_WINDOW_HOURS (default 24 h),
+    making it easy to shorten for testing or staging without code changes.
     """
-    _, window_end = get_utc_day_window()
-    expire_unix = int(window_end.timestamp())
+    window_seconds = settings.rate_limit_window_hours * 3600
     key = f"ratelimit:{fingerprint}"
-    result: bool | None = await redis.set(key, 1, nx=True, exat=expire_unix)
+    result: bool | None = await redis.set(key, 1, nx=True, ex=window_seconds)
     return result is not None
 
 
