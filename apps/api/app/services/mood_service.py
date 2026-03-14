@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import random
 import re
 import uuid
@@ -220,13 +221,27 @@ async def check_ip_rate_limit(redis: Redis, ip: str) -> bool:
     return count <= _IP_RATE_LIMIT_MAX
 
 
-async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMoodItem]:
+_RECENT_MOODS_TTL = 15  # seconds
+
+
+async def get_recent_moods(
+    session: AsyncSession,
+    redis: Redis,
+    limit: int,
+) -> list[RecentMoodItem]:
     """Return the most recent mood submissions ordered by submitted_at DESC.
 
+    Cache-aside with TTL 15 s: serves repeated polling from Redis instead of
+    hitting Postgres on every 30 s frontend tick. Invalidated on POST /moods.
     Coordinates are extracted from the PostGIS geometry via ST_X/ST_Y so the
     caller receives plain floats without any GeoAlchemy2 wrapper types.
     City is not yet populated (reserved for future reverse-geocoding).
     """
+    cache_key = f"moods:recent:{limit}"
+    cached = await redis.get(cache_key)
+    if cached:
+        return [RecentMoodItem.model_validate(d) for d in json.loads(cached)]
+
     stmt = (
         select(
             Mood.id,
@@ -240,7 +255,7 @@ async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMood
         .limit(limit)
     )
     result = await session.execute(stmt)
-    return [
+    items = [
         RecentMoodItem(
             id=row.id,
             mood_type=row.mood_type,
@@ -251,3 +266,9 @@ async def get_recent_moods(session: AsyncSession, limit: int) -> list[RecentMood
         )
         for row in result.all()
     ]
+    await redis.set(
+        cache_key,
+        json.dumps([item.model_dump(mode="json") for item in items]),
+        ex=_RECENT_MOODS_TTL,
+    )
+    return items

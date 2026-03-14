@@ -63,6 +63,13 @@ async def submit_mood(
             window_end=window_end,
         )
 
+    today = window_start.strftime("%Y-%m-%d")
+    await redis.delete(
+        "moods:recent:20",  # frontend default — invalidate on new submission
+        f"map:5:{today}",
+        f"map:7:{today}",
+    )
+
     return MoodResponse(
         id=mood.id,
         mood_type=mood.mood_type,
@@ -73,7 +80,8 @@ async def submit_mood(
 @router.get("/moods/recent", response_model=RecentMoodsResponse)
 async def get_recent_moods(
     session: DBSession,
+    redis: RedisClient,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> RecentMoodsResponse:
-    moods = await mood_service.get_recent_moods(session, limit)
+    moods = await mood_service.get_recent_moods(session, redis, limit)
     return RecentMoodsResponse(moods=moods)
