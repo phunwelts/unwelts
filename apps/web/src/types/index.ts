@@ -6,10 +6,8 @@ export type MoodType =
   | "anxious"
   | "sad"
   | "angry"
-  | "excited"
   | "tired";
 
-/** Moods shown in the submission UI (matches mockup — excited is backend-only for now) */
 export const MOOD_TYPES_UI: MoodType[] = [
   "happy",
   "calm",
@@ -25,9 +23,6 @@ export const MOOD_COLORS: Record<MoodType, string> = {
   anxious: "#f97316",
   sad: "#60a5fa",
   angry: "#f43f5e",
-  // excited exists in the backend enum but is intentionally absent from the
-  // submission UI — kept here so map rendering works if backend ever returns it.
-  excited: "#fb7185",
   tired: "#a78bfa",
 };
 
@@ -54,7 +49,6 @@ export interface MoodCounts {
   anxious: number;
   sad: number;
   angry: number;
-  excited: number;
   tired: number;
 }
 

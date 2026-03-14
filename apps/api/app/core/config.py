@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     redis_url: str
     fingerprint_secret: str
 
-    mood_submission_daily_limit: int = 1
     cors_origins: list[str] = ["http://localhost:3000"]
 
     @field_validator("app_env")
@@ -25,6 +24,26 @@ class Settings(BaseSettings):
         allowed = {"development", "production"}
         if v not in allowed:
             raise ValueError(f"app_env must be one of {allowed}")
+        return v
+
+    @field_validator("fingerprint_secret")
+    @classmethod
+    def validate_fingerprint_secret(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("fingerprint_secret must be at least 32 characters")
+        return v
+
+    @field_validator("cors_origins")
+    @classmethod
+    def validate_cors_origins(cls, v: list[str], info: ValidationInfo) -> list[str]:
+        app_env = info.data.get("app_env", "development")
+        if app_env == "production":
+            for origin in v:
+                if "localhost" in origin or "127.0.0.1" in origin:
+                    raise ValueError(
+                        "cors_origins contains a localhost entry in production — "
+                        "set CORS_ORIGINS to your production domain"
+                    )
         return v
 
 
