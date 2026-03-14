@@ -27,6 +27,14 @@ async def submit_mood(
 ) -> MoodResponse:
     ip = _extract_ip(request)
     user_agent = request.headers.get("user-agent", "")
+
+    ip_allowed = await mood_service.check_ip_rate_limit(redis, ip)
+    if not ip_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Please slow down.",
+        )
+
     fingerprint = mood_service.compute_fingerprint(ip, user_agent)
 
     allowed = await mood_service.check_and_set_rate_limit(redis, fingerprint)

@@ -29,6 +29,9 @@ SQL = """
 
 
 async def main() -> None:
+    if os.environ.get("APP_ENV") == "production":
+        raise SystemExit("seed_cluster.py must not run in production.")
+
     raw_url = os.environ["DATABASE_URL"].replace(
         "postgresql+asyncpg://", "postgresql://"
     )
