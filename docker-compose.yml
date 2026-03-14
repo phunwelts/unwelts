@@ -44,7 +44,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://unwelts:localpassword@db:5432/unwelts
       REDIS_URL: redis://:localpassword@redis:6379/0
       FINGERPRINT_SECRET: local-dev-secret-not-used-in-production
-      MOOD_SUBMISSION_DAILY_LIMIT: "1"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      RATE_LIMIT_WINDOW_HOURS: "24"
     ports:
       - "8000:8000"
     volumes:
@@ -54,6 +56,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   web:
@@ -74,6 +82,12 @@ services:
       - /app/.next
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: npm run dev
 
 volumes:
