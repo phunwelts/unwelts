@@ -33,3 +33,4 @@ class RecentMoodItem(BaseModel):
 
 class RecentMoodsResponse(BaseModel):
     moods: list[RecentMoodItem]
+    total: int

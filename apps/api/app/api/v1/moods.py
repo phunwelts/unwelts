@@ -37,11 +37,11 @@ async def submit_mood(
 
     fingerprint = mood_service.compute_fingerprint(ip, user_agent)
 
-    allowed = await mood_service.check_and_set_rate_limit(redis, fingerprint)
-    if not allowed:
+    ttl = await mood_service.check_and_set_rate_limit(redis, fingerprint)
+    if ttl is not None:
         raise HTTPException(
             status_code=429,
-            detail="You have already submitted a mood today. Try again tomorrow.",
+            detail={"message": "Rate limit exceeded.", "retry_after_seconds": ttl},
         )
 
     window_start, window_end = get_utc_day_window()
@@ -65,7 +65,7 @@ async def submit_mood(
 
     today = window_start.strftime("%Y-%m-%d")
     await redis.delete(
-        "moods:recent:20",  # frontend default — invalidate on new submission
+        "moods:recent:100",  # frontend default — invalidate on new submission
         f"map:5:{today}",
         f"map:7:{today}",
     )
@@ -83,5 +83,5 @@ async def get_recent_moods(
     redis: RedisClient,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> RecentMoodsResponse:
-    moods = await mood_service.get_recent_moods(session, redis, limit)
-    return RecentMoodsResponse(moods=moods)
+    moods, total = await mood_service.get_recent_moods(session, redis, limit)
+    return RecentMoodsResponse(moods=moods, total=total)

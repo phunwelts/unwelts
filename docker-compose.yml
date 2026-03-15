@@ -46,7 +46,7 @@ services:
       FINGERPRINT_SECRET: local-dev-secret-not-used-in-production
       DB_POOL_SIZE: "5"
       DB_MAX_OVERFLOW: "5"
-      RATE_LIMIT_WINDOW_HOURS: "24"
+      RATE_LIMIT_WINDOW_HOURS: "4"
     ports:
       - "8000:8000"
     volumes:
