@@ -190,18 +190,23 @@ async def upsert_h3_aggregates(
 # ---------------------------------------------------------------------------
 
 
-async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> bool:
-    """Return True if the submission is allowed, False if rate limited.
+async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> int | None:
+    """Return None if allowed, or TTL seconds remaining if rate limited.
 
     Uses SET NX EX for an atomic check-and-set: a single Redis round-trip
     both checks existence and sets the key, eliminating any TOCTOU race.
-    The TTL is a rolling window controlled by RATE_LIMIT_WINDOW_HOURS (default 24 h),
+    The TTL is a rolling window controlled by RATE_LIMIT_WINDOW_HOURS (default 4 h),
     making it easy to shorten for testing or staging without code changes.
+    When rate limited, a second round-trip fetches the remaining TTL so the
+    frontend can show an accurate "try again in Xh Ym" message.
     """
     window_seconds = settings.rate_limit_window_hours * 3600
     key = f"ratelimit:{fingerprint}"
     result: bool | None = await redis.set(key, 1, nx=True, ex=window_seconds)
-    return result is not None
+    if result is not None:
+        return None  # allowed
+    ttl: int = await redis.ttl(key)
+    return max(ttl, 0)
 
 
 async def check_ip_rate_limit(redis: Redis, ip: str) -> bool:
@@ -228,8 +233,8 @@ async def get_recent_moods(
     session: AsyncSession,
     redis: Redis,
     limit: int,
-) -> list[RecentMoodItem]:
-    """Return the most recent mood submissions ordered by submitted_at DESC.
+) -> tuple[list[RecentMoodItem], int]:
+    """Return the most recent mood submissions and today's total signal count.
 
     Cache-aside with TTL 15 s: serves repeated polling from Redis instead of
     hitting Postgres on every 30 s frontend tick. Invalidated on POST /moods.
@@ -240,7 +245,8 @@ async def get_recent_moods(
     cache_key = f"moods:recent:{limit}"
     cached = await redis.get(cache_key)
     if cached:
-        return [RecentMoodItem.model_validate(d) for d in json.loads(cached)]
+        data = json.loads(cached)
+        return [RecentMoodItem.model_validate(d) for d in data["moods"]], data["total"]
 
     stmt = (
         select(
@@ -266,9 +272,15 @@ async def get_recent_moods(
         )
         for row in result.all()
     ]
-    await redis.set(
-        cache_key,
-        json.dumps([item.model_dump(mode="json") for item in items]),
-        ex=_RECENT_MOODS_TTL,
+
+    window_start, _ = get_utc_day_window()
+    total_stmt = select(sa.func.count()).select_from(Mood).where(
+        Mood.submitted_at >= window_start
     )
-    return items
+    total: int = (await session.execute(total_stmt)).scalar_one()
+
+    payload = json.dumps(
+        {"moods": [item.model_dump(mode="json") for item in items], "total": total}
+    )
+    await redis.set(cache_key, payload, ex=_RECENT_MOODS_TTL)
+    return items, total

@@ -3,7 +3,11 @@ import type { MoodSubmitRequest, MoodSubmitResponse, RecentMoodsResponse } from 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export class RateLimitError extends Error {}
+export class RateLimitError extends Error {
+  constructor(public readonly retryAfterSeconds: number) {
+    super("rate_limited");
+  }
+}
 
 export async function fetchRecentMoods(
   limit = 20
@@ -24,7 +28,11 @@ export async function submitMood(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (res.status === 429) throw new RateLimitError("rate_limited");
+  if (res.status === 429) {
+    const body = await res.json() as { detail?: { retry_after_seconds?: number } };
+    const retryAfter = body?.detail?.retry_after_seconds ?? 0;
+    throw new RateLimitError(retryAfter);
+  }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<MoodSubmitResponse>;
 }

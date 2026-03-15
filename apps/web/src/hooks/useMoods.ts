@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { fetchRecentMoods } from "@/lib/api";
 import type { MapDot } from "@/types";
 
-export function useMoods(intervalMs = 30_000): { dots: MapDot[]; refresh: () => void } {
+export function useMoods(intervalMs = 30_000): { dots: MapDot[]; total: number; refresh: () => void } {
   const [dots, setDots] = useState<MapDot[]>([]);
+  const [total, setTotal] = useState(0);
   const refreshRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function useMoods(intervalMs = 30_000): { dots: MapDot[]; refresh: () => 
             submitted_at: m.submitted_at,
           }))
         );
+        setTotal(data.total);
       } catch {
         // Keep stale data on fetch failure
       } finally {
@@ -39,5 +41,5 @@ export function useMoods(intervalMs = 30_000): { dots: MapDot[]; refresh: () => 
     return () => clearInterval(id);
   }, [intervalMs]);
 
-  return { dots, refresh: () => refreshRef.current() };
+  return { dots, total, refresh: () => refreshRef.current() };
 }

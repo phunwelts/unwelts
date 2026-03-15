@@ -22,8 +22,7 @@ class Settings(BaseSettings):
     db_max_overflow: int = 5
 
     # Rolling window for fingerprint-based rate limit.
-    # Default 24 h keeps existing prod semantics; reduce in dev/staging as needed.
-    rate_limit_window_hours: int = 24
+    rate_limit_window_hours: int = 4
 
     @field_validator("app_env")
     @classmethod
