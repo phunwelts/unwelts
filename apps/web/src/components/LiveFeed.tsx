@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MOOD_COLORS } from "@/types";
 import type { MapDot } from "@/types";
 
@@ -14,12 +14,21 @@ function relativeTime(iso: string): string {
 export function LiveFeed({ dots, total }: { dots: MapDot[]; total: number }) {
   const feed = dots.slice(0, 15);
   const prevIdsRef = useRef<Set<string>>(new Set());
-  const isFirstRender = useRef(true);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    isFirstRender.current = false;
-    prevIdsRef.current = new Set(feed.map((d) => d.id));
-  });
+    const currentIds = new Set(feed.map((d) => d.id));
+    if (prevIdsRef.current.size > 0) {
+      const fresh = new Set([...currentIds].filter((id) => !prevIdsRef.current.has(id)));
+      if (fresh.size > 0) {
+        setNewIds(fresh);
+        const t = setTimeout(() => setNewIds(new Set()), 1500);
+        prevIdsRef.current = currentIds;
+        return () => clearTimeout(t);
+      }
+    }
+    prevIdsRef.current = currentIds;
+  }, [feed]);
 
   return (
     <section style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -36,42 +45,35 @@ export function LiveFeed({ dots, total }: { dots: MapDot[]; total: number }) {
         {feed.length === 0 ? (
           <p style={{ fontSize: 9, color: "#666" }}>No signals yet…</p>
         ) : (
-          feed.map((dot, i) => {
-            const isNew = !isFirstRender.current && !prevIdsRef.current.has(dot.id);
-            return (
-              <div
-                key={dot.id}
-                className={isNew ? "anim-highlight-new" : "anim-slider"}
-                style={{
-                  marginBottom: 9, paddingBottom: 9,
-                  borderBottom: "1px solid rgba(255,255,255,0.025)",
-                  animationDelay: isNew ? undefined : `${i * 0.05}s`,
-                  borderRadius: 3,
-                  padding: "0 4px 9px",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                  <span style={{ fontSize: 9, color: "#ccc" }}>
-                    Anonymous
-                  </span>
-                  <span style={{ fontSize: 8, color: "#aaa" }}>
-                    {relativeTime(dot.submitted_at)}
-                  </span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{
-                    width: 5, height: 5, borderRadius: "50%",
-                    background: MOOD_COLORS[dot.mood_type],
-                    boxShadow: `0 0 4px ${MOOD_COLORS[dot.mood_type]}`,
-                    flexShrink: 0,
-                  }} />
-                  <span style={{ fontSize: 9, color: MOOD_COLORS[dot.mood_type] }}>
-                    {dot.mood_type}
-                  </span>
-                </div>
+          feed.map((dot, i) => (
+            <div
+              key={dot.id}
+              className={newIds.has(dot.id) ? "anim-highlight-new" : "anim-slider"}
+              style={{
+                marginBottom: 9, paddingBottom: 9,
+                borderBottom: "1px solid rgba(255,255,255,0.025)",
+                animationDelay: newIds.has(dot.id) ? undefined : `${i * 0.05}s`,
+                borderRadius: 3,
+                padding: "0 4px 9px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                <span style={{ fontSize: 9, color: "#ccc" }}>Anonymous</span>
+                <span style={{ fontSize: 8, color: "#aaa" }}>{relativeTime(dot.submitted_at)}</span>
               </div>
-            );
-          })
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{
+                  width: 5, height: 5, borderRadius: "50%",
+                  background: MOOD_COLORS[dot.mood_type],
+                  boxShadow: `0 0 4px ${MOOD_COLORS[dot.mood_type]}`,
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 9, color: MOOD_COLORS[dot.mood_type] }}>
+                  {dot.mood_type}
+                </span>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </section>

@@ -122,7 +122,6 @@ export function MoodSelector({ onSubmitSuccess }: { onSubmitSuccess: () => void 
         </button>
         {submitState === "success" && selectedMood && (
           <span
-            key={Date.now()}
             className="anim-success-ring"
             style={{ color: MOOD_COLORS[selectedMood] }}
           />
