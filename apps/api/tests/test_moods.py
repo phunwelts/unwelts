@@ -21,7 +21,9 @@ async def test_submit_mood_rate_limit(client: AsyncClient) -> None:
 
     r2 = await client.post("/api/v1/moods", json=VALID_PAYLOAD)
     assert r2.status_code == 429
-    assert "already submitted" in r2.json()["detail"]
+    detail = r2.json()["detail"]
+    assert detail["message"] == "Rate limit exceeded."
+    assert detail["retry_after_seconds"] > 0
 
 
 @pytest.mark.asyncio
