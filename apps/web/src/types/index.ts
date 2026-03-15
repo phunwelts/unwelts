@@ -84,6 +84,7 @@ export interface RecentMood {
 
 export interface RecentMoodsResponse {
   moods: RecentMood[];
+  total: number;
 }
 
 // ─── API errors ───────────────────────────────────────────────────────────────

@@ -26,10 +26,19 @@ function getCoords(): Promise<{ lat: number; lng: number }> {
   });
 }
 
+function formatRetryAfter(seconds: number): string {
+  if (seconds <= 0) return "soon";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ""}`.trim();
+  return `${Math.max(m, 1)}m`;
+}
+
 export function useSubmitMood(onSuccess: () => void) {
   const [selectedMood, setSelectedMood] = useState<MoodType | null>(null);
   const [note, setNote] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
+  const [retryLabel, setRetryLabel] = useState("");
 
   const submit = useCallback(async () => {
     if (!selectedMood || submitState === "submitting") return;
@@ -58,9 +67,14 @@ export function useSubmitMood(onSuccess: () => void) {
         setNote("");
       }, 3_000);
     } catch (e) {
-      setSubmitState(e instanceof RateLimitError ? "rate_limited" : "error");
+      if (e instanceof RateLimitError) {
+        setRetryLabel(formatRetryAfter(e.retryAfterSeconds));
+        setSubmitState("rate_limited");
+      } else {
+        setSubmitState("error");
+      }
     }
   }, [selectedMood, note, submitState, onSuccess]);
 
-  return { selectedMood, setSelectedMood, note, setNote, submitState, submit };
+  return { selectedMood, setSelectedMood, note, setNote, submitState, submit, retryLabel };
 }
