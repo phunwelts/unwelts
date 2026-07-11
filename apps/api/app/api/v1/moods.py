@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.api.deps import DBSession, RedisClient
+from app.core.config import settings
 from app.schemas.mood import MoodResponse, MoodSubmitRequest, RecentMoodsResponse
 from app.services import mood_service
 from app.services.mood_service import get_utc_day_window
@@ -11,11 +12,24 @@ router = APIRouter()
 
 
 def _extract_ip(request: Request) -> str:
-    """Return the real client IP, preferring X-Forwarded-For when behind a proxy."""
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """Return the real client IP, honoring X-Forwarded-For only behind trusted proxies.
+
+    Each trusted proxy appends exactly one entry to X-Forwarded-For, so with N
+    trusted proxies the Nth-from-the-right entry is the only one an attacker
+    cannot forge. Entries further left are client-supplied and must be ignored,
+    otherwise the IP rate limit can be bypassed with a spoofed header.
+    """
+    peer = request.client.host if request.client else "unknown"
+    proxy_count = settings.trusted_proxy_count
+    if proxy_count == 0:
+        return peer
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    hops = [hop.strip() for hop in forwarded_for.split(",") if hop.strip()]
+    if not hops:
+        return peer
+    if len(hops) < proxy_count:
+        return hops[0]
+    return hops[-proxy_count]
 
 
 @router.post("/moods", response_model=MoodResponse, status_code=201)

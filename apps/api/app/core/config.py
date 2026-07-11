@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -23,6 +23,11 @@ class Settings(BaseSettings):
 
     # Rolling window for fingerprint-based rate limit.
     rate_limit_window_hours: int = 4
+
+    # Number of reverse proxies (ALB, Fly edge, etc.) between the internet and
+    # this app. 0 means X-Forwarded-For is ignored and the socket peer address
+    # is used — the safe default when the API is directly reachable.
+    trusted_proxy_count: int = Field(default=0, ge=0)
 
     @field_validator("app_env")
     @classmethod
