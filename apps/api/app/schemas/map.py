@@ -21,9 +21,14 @@ class HexProperties(BaseModel):
     total: int
 
 
+class PolygonGeometry(BaseModel):
+    type: Literal["Polygon"] = "Polygon"
+    coordinates: list[list[list[float]]]
+
+
 class HexFeature(BaseModel):
     type: Literal["Feature"] = "Feature"
-    geometry: dict[str, object]
+    geometry: PolygonGeometry
     properties: HexProperties
 
 

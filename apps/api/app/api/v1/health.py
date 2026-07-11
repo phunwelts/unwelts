@@ -18,7 +18,7 @@ async def health_check(session: DBSession, redis: RedisClient) -> JSONResponse:
         db_status = "error"
 
     try:
-        await redis.ping()  # type: ignore[misc]
+        await redis.ping()
     except Exception:
         redis_status = "error"
 

@@ -202,7 +202,7 @@ async def check_and_set_rate_limit(redis: Redis, fingerprint: str) -> int | None
     """
     window_seconds = settings.rate_limit_window_hours * 3600
     key = f"ratelimit:{fingerprint}"
-    result: bool | None = await redis.set(key, 1, nx=True, ex=window_seconds)
+    result = await redis.set(key, 1, nx=True, ex=window_seconds)
     if result is not None:
         return None  # allowed
     ttl: int = await redis.ttl(key)

@@ -7,12 +7,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.enums import MoodType
 from app.db.models.h3_aggregate import H3Aggregate
-from app.schemas.map import HexFeature, HexProperties, MapResponse, MoodCounts
+from app.schemas.map import (
+    HexFeature,
+    HexProperties,
+    MapResponse,
+    MoodCounts,
+    PolygonGeometry,
+)
 
 _MAP_TTL = 30  # seconds
 
 
-def _cell_to_geojson_polygon(cell: str) -> dict[str, object]:
+def _cell_to_geojson_polygon(cell: str) -> PolygonGeometry:
     """Convert an H3 cell to a GeoJSON Polygon geometry.
 
     h3.cell_to_boundary() returns [(lat, lng), ...].
@@ -21,7 +27,7 @@ def _cell_to_geojson_polygon(cell: str) -> dict[str, object]:
     boundary = h3.cell_to_boundary(cell)
     coords: list[list[float]] = [[lng, lat] for lat, lng in boundary]
     coords.append(coords[0])
-    return {"type": "Polygon", "coordinates": [coords]}
+    return PolygonGeometry(coordinates=[coords])
 
 
 async def get_map_data(
