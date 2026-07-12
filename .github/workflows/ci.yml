@@ -75,4 +75,4 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://unwelts:testpassword@localhost:5432/unwelts_test
           REDIS_URL: redis://localhost:6379/0
           FINGERPRINT_SECRET: test-secret-for-ci-at-least-32-chars-ok
-        run: uv run pytest --cov=app --cov-report=term-missing
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=85

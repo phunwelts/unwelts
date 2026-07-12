@@ -56,13 +56,20 @@ async def redis() -> AsyncGenerator[Redis, None]:
 
 @pytest.fixture()
 async def client(
-    db_session: AsyncSession,
+    db_engine: AsyncEngine,
     redis: Redis,
 ) -> AsyncGenerator[AsyncClient, None]:
-    """AsyncClient wired to the test DB and Redis via dependency overrides."""
+    """AsyncClient wired to the test DB and Redis via dependency overrides.
+
+    Mirrors production get_db: a fresh session per request. Reusing one
+    session across requests leaks the implicit transaction a GET starts,
+    breaking any later request that calls session.begin().
+    """
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
-        yield db_session
+        async with factory() as session:
+            yield session
 
     async def override_get_redis() -> AsyncGenerator[Redis, None]:
         yield redis
