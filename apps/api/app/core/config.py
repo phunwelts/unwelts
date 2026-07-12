@@ -77,11 +77,12 @@ def _fetch_from_secrets_manager() -> dict[str, Any]:
 def build_settings() -> Settings:
     app_env = os.environ.get("APP_ENV", "development")
 
-    if app_env == "production":
+    # AWS Secrets Manager is opt-in (set AWS_SECRET_NAME); otherwise production
+    # reads plain env vars, e.g. Fly.io secrets injected into the environment.
+    if app_env == "production" and "AWS_SECRET_NAME" in os.environ:
         secrets = _fetch_from_secrets_manager()
         return Settings(app_env=app_env, **secrets)
 
-    # Development: all variables are injected by Docker Compose into os.environ
     return Settings(app_env=app_env)  # type: ignore[call-arg]
 
 

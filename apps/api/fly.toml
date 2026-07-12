@@ -1,0 +1,33 @@
+# Fly.io config for the Unwelts API. Deploy from apps/api: `fly deploy`
+app = "unwelts-api"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  release_command = "alembic upgrade head"
+
+[env]
+  APP_ENV = "production"
+  # Exactly one proxy (fly-proxy) sits between clients and the app; the
+  # rightmost X-Forwarded-For hop is therefore the real client IP.
+  TRUSTED_PROXY_COUNT = "1"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "15s"
+    method = "GET"
+    path = "/api/v1/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
