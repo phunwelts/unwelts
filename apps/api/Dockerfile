@@ -11,12 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Keep the venv outside /app so the docker-compose bind mount (./apps/api:/app)
+# can't shadow it with a host macOS .venv.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
 COPY . .
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/opt/venv/bin:$PATH"
 
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

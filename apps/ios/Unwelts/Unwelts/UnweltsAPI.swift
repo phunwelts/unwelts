@@ -19,7 +19,24 @@ struct UnweltsAPI {
 
     private let client: Client
 
-    init(serverURL: URL = URL(string: "https://unwelts-api.fly.dev")!) {
+    // Debug builds develop against the local stack (docker compose up api)
+    // so testing never writes into the production database; Release builds
+    // ship pointing at prod. UNWELTS_API_URL (scheme env var) overrides both,
+    // e.g. for Debug on a physical device via the Mac's LAN IP.
+    static var defaultServerURL: URL {
+        if let override = ProcessInfo.processInfo.environment["UNWELTS_API_URL"],
+            let url = URL(string: override)
+        {
+            return url
+        }
+        #if DEBUG
+            return URL(string: "http://localhost:8000")!
+        #else
+            return URL(string: "https://unwelts-api.fly.dev")!
+        #endif
+    }
+
+    init(serverURL: URL = UnweltsAPI.defaultServerURL) {
         // FastAPI emits fractional-second timestamps (…T20:02:07.715719Z);
         // the default .iso8601 transcoder rejects them.
         client = Client(
