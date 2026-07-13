@@ -1,9 +1,15 @@
 """
 Seed script — inserts mock moods directly into the DB, bypassing rate limit.
-Run with: docker-compose run --rm api python seed_moods.py
+Each anchor city also spawns a random nearby cluster, yielding ~200+ signals
+around the world with staggered recent timestamps.
+
+Run with: docker compose exec api python seed_moods.py [--fresh]
+  --fresh: wipe moods + h3_aggregates first, so the world is exactly the seed.
 """
 import asyncio
 import os
+import random
+import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -49,6 +55,19 @@ POINTS = [
     ( 37.56, 126.97, "anxious", "exam season"),          # Seoul
 ]
 
+MOOD_TYPES = ["happy", "calm", "anxious", "sad", "angry", "tired"]
+
+# Occasional notes for cluster signals (most carry none, like real traffic).
+CLUSTER_NOTES = [
+    "long day", "small win today", "can't sleep", "monday feelings",
+    "sun is out", "traffic again", "quiet evening", "deadline week",
+    "coffee helped", "missing home", "new beginnings", "rain all day",
+]
+
+CLUSTER_MIN, CLUSTER_MAX = 5, 9   # extra signals per anchor city
+JITTER_DEG = 0.35                 # ~30-40 km scatter around the anchor
+MAX_AGE_HOURS = 6                 # timestamps spread over the recent past
+
 SQL = """
     INSERT INTO moods
         (id, fingerprint, mood_type, note, location, h3_r5, h3_r7, submitted_at)
@@ -56,6 +75,23 @@ SQL = """
         ($1, $2, $3::mood_type, $4,
          ST_SetSRID(ST_MakePoint($6, $5), 4326), $7, $8, $9)
 """
+
+
+async def insert_mood(
+    conn: asyncpg.Connection,
+    lat: float,
+    lng: float,
+    mood_type: str,
+    note: str | None,
+    submitted: datetime,
+) -> None:
+    await conn.execute(
+        SQL,
+        uuid.uuid4(), f"seed-{uuid.uuid4().hex}", mood_type, note,
+        lat, lng,
+        h3.latlng_to_cell(lat, lng, 5), h3.latlng_to_cell(lat, lng, 7),
+        submitted,
+    )
 
 
 async def main() -> None:
@@ -67,27 +103,38 @@ async def main() -> None:
     )
     conn = await asyncpg.connect(raw_url)
 
+    if "--fresh" in sys.argv:
+        await conn.execute("DELETE FROM moods")
+        await conn.execute("DELETE FROM h3_aggregates")
+        print("· wiped existing moods + aggregates")
+
     now = datetime.now(UTC)
     inserted = 0
 
-    for i, (lat, lng, mood_type, note) in enumerate(POINTS):
-        mood_id   = uuid.uuid4()
-        fp        = f"seed-{uuid.uuid4().hex}"
-        h3_r5     = h3.latlng_to_cell(lat, lng, 5)
-        h3_r7     = h3.latlng_to_cell(lat, lng, 7)
-        submitted = now - timedelta(seconds=i * 30)
-
-        await conn.execute(
-            SQL,
-            mood_id, fp, mood_type, note,
-            lat, lng,
-            h3_r5, h3_r7, submitted,
+    for lat, lng, mood_type, note in POINTS:
+        # The anchor city signal, with its curated note.
+        await insert_mood(
+            conn, lat, lng, mood_type, note,
+            now - timedelta(minutes=random.uniform(0, MAX_AGE_HOURS * 60)),
         )
         inserted += 1
-        print(f"  [{i+1:02d}/{len(POINTS)}] {mood_type:8s}  {lat:7.2f}, {lng:8.2f}")
+
+        # A cluster of random signals scattered around it. The anchor's mood
+        # is weighted 3x so each region keeps a loose dominant color.
+        weights = [3 if m == mood_type else 1 for m in MOOD_TYPES]
+        for _ in range(random.randint(CLUSTER_MIN, CLUSTER_MAX)):
+            await insert_mood(
+                conn,
+                max(-90.0, min(90.0, lat + random.gauss(0, JITTER_DEG))),
+                max(-180.0, min(180.0, lng + random.gauss(0, JITTER_DEG))),
+                random.choices(MOOD_TYPES, weights=weights)[0],
+                random.choice(CLUSTER_NOTES) if random.random() < 0.15 else None,
+                now - timedelta(minutes=random.uniform(0, MAX_AGE_HOURS * 60)),
+            )
+            inserted += 1
 
     await conn.close()
-    print(f"\n✓ {inserted} moods inserted.")
+    print(f"✓ {inserted} moods inserted across {len(POINTS)} regions.")
 
 
 if __name__ == "__main__":
