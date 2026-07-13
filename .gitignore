@@ -43,3 +43,9 @@ infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup
 infra/.terraform.lock.hcl
+
+# ─── Xcode / iOS ────────────────────────────────────────────────────────────
+xcuserdata/
+*.xcuserstate
+DerivedData/
+.DS_Store
