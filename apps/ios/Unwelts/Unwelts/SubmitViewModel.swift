@@ -28,7 +28,8 @@ final class SubmitViewModel {
     private(set) var retryLabel = ""
 
     private let location = LocationService()
-    var onSuccess: (() async -> Void)?
+    var onSuccess: ((CLLocationCoordinate2D) async -> Void)?
+    var gate: SignalGate?
 
     var canSend: Bool {
         selectedMood != nil && submitState != .submitting && submitState != .success
@@ -64,8 +65,9 @@ final class SubmitViewModel {
                 note: trimmed.isEmpty ? nil : trimmed
             )
             submitState = .success
+            gate?.activateForFullWindow()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            await onSuccess?()
+            await onSuccess?(coordinate)
             try? await Task.sleep(for: .seconds(3))
             submitState = .idle
             selectedMood = nil
@@ -73,6 +75,9 @@ final class SubmitViewModel {
         } catch let error as RateLimitError {
             retryLabel = Self.formatRetryAfter(seconds: error.retryAfterSeconds)
             submitState = .rateLimited
+            // A 429 proves a signal is already live server-side (e.g. after
+            // a reinstall wiped local state) — unlock for its remaining TTL.
+            gate?.activate(until: .now.addingTimeInterval(TimeInterval(error.retryAfterSeconds)))
         } catch {
             submitState = .error
         }

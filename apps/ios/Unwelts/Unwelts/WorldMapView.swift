@@ -15,8 +15,16 @@ private let mapStyleURL = URL(string: "https://basemaps.cartocdn.com/gl/dark-mat
 private let detailZoom: Float = 4  // below: heatmap only; above: + dots + sonar
 private let sonarFrames = 120
 
+// A one-shot camera request; a fresh id means "fly there now".
+struct MapFocus: Equatable {
+    let id: UUID
+    let latitude: Double
+    let longitude: Double
+}
+
 struct WorldMapView: UIViewRepresentable {
     let moods: [Components.Schemas.RecentMoodItem]
+    var focus: MapFocus?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -35,6 +43,7 @@ struct WorldMapView: UIViewRepresentable {
 
     func updateUIView(_ mapView: MLNMapView, context: Context) {
         context.coordinator.update(moods: moods)
+        context.coordinator.apply(focus: focus, on: mapView)
     }
 
     final class Coordinator: NSObject, MLNMapViewDelegate {
@@ -44,6 +53,9 @@ struct WorldMapView: UIViewRepresentable {
         private var tick = 0
 
         private var pendingMoods: [Components.Schemas.RecentMoodItem] = []
+        private var styleLoaded = false
+        private var appliedFocusID: UUID?
+        private var pendingFocus: MapFocus?
 
         deinit {
             displayLink?.invalidate()
@@ -52,6 +64,33 @@ struct WorldMapView: UIViewRepresentable {
         func update(moods: [Components.Schemas.RecentMoodItem]) {
             pendingMoods = moods
             source?.shape = Self.collection(from: moods)
+        }
+
+        // The web's post-submit moment: fly the camera to the user's signal.
+        // Deferred until the style loads (the gate mounts a fresh map on the
+        // same tick the submit succeeds).
+        func apply(focus: MapFocus?, on mapView: MLNMapView) {
+            guard let focus, focus.id != appliedFocusID else { return }
+            if styleLoaded {
+                fly(to: focus, on: mapView)
+            } else {
+                pendingFocus = focus
+            }
+        }
+
+        private func fly(to focus: MapFocus, on mapView: MLNMapView) {
+            appliedFocusID = focus.id
+            pendingFocus = nil
+            let center = CLLocationCoordinate2D(
+                latitude: focus.latitude, longitude: focus.longitude
+            )
+            let camera = MLNMapCamera(
+                lookingAtCenter: center,
+                altitude: MLNAltitudeForZoomLevel(6.5, 0, center.latitude, mapView.frame.size),
+                pitch: 0,
+                heading: 0
+            )
+            mapView.fly(to: camera, withDuration: 2.2, completionHandler: nil)
         }
 
         func mapView(_ mapView: MLNMapView, didFinishLoading style: MLNStyle) {
@@ -102,6 +141,11 @@ struct WorldMapView: UIViewRepresentable {
             link.preferredFramesPerSecond = 30
             link.add(to: .main, forMode: .common)
             displayLink = link
+
+            styleLoaded = true
+            if let focus = pendingFocus {
+                fly(to: focus, on: mapView)
+            }
         }
 
         @objc private func step() {
