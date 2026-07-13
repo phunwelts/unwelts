@@ -1,0 +1,479 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Unwelts API",
+  "version": "0.1.0"
+ },
+ "paths": {
+  "/api/v1/moods": {
+   "post": {
+    "summary": "Submit Mood",
+    "operationId": "submit_mood_api_v1_moods_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MoodSubmitRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MoodResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/moods/recent": {
+   "get": {
+    "summary": "Get Recent Moods",
+    "operationId": "get_recent_moods_api_v1_moods_recent_get",
+    "parameters": [
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 100,
+       "minimum": 1,
+       "default": 20,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RecentMoodsResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/health": {
+   "get": {
+    "summary": "Health Check",
+    "operationId": "health_check_api_v1_health_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/v1/map": {
+   "get": {
+    "summary": "Get Map",
+    "operationId": "get_map_api_v1_map_get",
+    "parameters": [
+     {
+      "name": "resolution",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "description": "H3 resolution: 5 (city-level) or 7 (neighbourhood-level)",
+       "default": 5,
+       "title": "Resolution"
+      },
+      "description": "H3 resolution: 5 (city-level) or 7 (neighbourhood-level)"
+     },
+     {
+      "name": "date",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "description": "UTC date in YYYY-MM-DD format. Defaults to today.",
+       "title": "Date",
+       "type": "string"
+      },
+      "description": "UTC date in YYYY-MM-DD format. Defaults to today."
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MapResponse"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "HexFeature": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "const": "Feature",
+      "title": "Type",
+      "default": "Feature"
+     },
+     "geometry": {
+      "$ref": "#/components/schemas/PolygonGeometry"
+     },
+     "properties": {
+      "$ref": "#/components/schemas/HexProperties"
+     }
+    },
+    "type": "object",
+    "required": [
+     "geometry",
+     "properties"
+    ],
+    "title": "HexFeature"
+   },
+   "HexProperties": {
+    "properties": {
+     "h3_cell": {
+      "type": "string",
+      "title": "H3 Cell"
+     },
+     "dominant_mood": {
+      "$ref": "#/components/schemas/MoodType"
+     },
+     "moods": {
+      "$ref": "#/components/schemas/MoodCounts"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "h3_cell",
+     "dominant_mood",
+     "moods",
+     "total"
+    ],
+    "title": "HexProperties"
+   },
+   "MapResponse": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "const": "FeatureCollection",
+      "title": "Type",
+      "default": "FeatureCollection"
+     },
+     "features": {
+      "items": {
+       "$ref": "#/components/schemas/HexFeature"
+      },
+      "type": "array",
+      "title": "Features"
+     }
+    },
+    "type": "object",
+    "required": [
+     "features"
+    ],
+    "title": "MapResponse"
+   },
+   "MoodCounts": {
+    "properties": {
+     "happy": {
+      "type": "integer",
+      "title": "Happy",
+      "default": 0
+     },
+     "sad": {
+      "type": "integer",
+      "title": "Sad",
+      "default": 0
+     },
+     "anxious": {
+      "type": "integer",
+      "title": "Anxious",
+      "default": 0
+     },
+     "angry": {
+      "type": "integer",
+      "title": "Angry",
+      "default": 0
+     },
+     "calm": {
+      "type": "integer",
+      "title": "Calm",
+      "default": 0
+     },
+     "tired": {
+      "type": "integer",
+      "title": "Tired",
+      "default": 0
+     }
+    },
+    "type": "object",
+    "title": "MoodCounts"
+   },
+   "MoodResponse": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "mood_type": {
+      "$ref": "#/components/schemas/MoodType"
+     },
+     "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Submitted At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "mood_type",
+     "submitted_at"
+    ],
+    "title": "MoodResponse"
+   },
+   "MoodSubmitRequest": {
+    "properties": {
+     "lat": {
+      "type": "number",
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat"
+     },
+     "lng": {
+      "type": "number",
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lng"
+     },
+     "mood_type": {
+      "$ref": "#/components/schemas/MoodType"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string",
+      "maxLength": 280
+     }
+    },
+    "type": "object",
+    "required": [
+     "lat",
+     "lng",
+     "mood_type"
+    ],
+    "title": "MoodSubmitRequest"
+   },
+   "MoodType": {
+    "type": "string",
+    "enum": [
+     "happy",
+     "sad",
+     "anxious",
+     "angry",
+     "calm",
+     "tired"
+    ],
+    "title": "MoodType"
+   },
+   "PolygonGeometry": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "const": "Polygon",
+      "title": "Type",
+      "default": "Polygon"
+     },
+     "coordinates": {
+      "items": {
+       "items": {
+        "items": {
+         "type": "number"
+        },
+        "type": "array"
+       },
+       "type": "array"
+      },
+      "type": "array",
+      "title": "Coordinates"
+     }
+    },
+    "type": "object",
+    "required": [
+     "coordinates"
+    ],
+    "title": "PolygonGeometry"
+   },
+   "RecentMoodItem": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "format": "uuid",
+      "title": "Id"
+     },
+     "mood_type": {
+      "$ref": "#/components/schemas/MoodType"
+     },
+     "note": {
+      "title": "Note",
+      "type": "string"
+     },
+     "lat": {
+      "type": "number",
+      "title": "Lat"
+     },
+     "lng": {
+      "type": "number",
+      "title": "Lng"
+     },
+     "city": {
+      "title": "City",
+      "type": "string"
+     },
+     "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Submitted At"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "mood_type",
+     "lat",
+     "lng",
+     "submitted_at"
+    ],
+    "title": "RecentMoodItem"
+   },
+   "RecentMoodsResponse": {
+    "properties": {
+     "moods": {
+      "items": {
+       "$ref": "#/components/schemas/RecentMoodItem"
+      },
+      "type": "array",
+      "title": "Moods"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "moods",
+     "total"
+    ],
+    "title": "RecentMoodsResponse"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   }
+  }
+ }
+}
